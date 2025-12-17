@@ -5,6 +5,8 @@ from discord.ui import View, Button, Select
 import yt_dlp
 import asyncio
 
+print("Code.txt został załadowany")
+
 GUILD_ID = 1378797704133742774
 VERIFIED_ROLE_ID = 1437464785334833253
 TICKET_CATEGORY_ID = 1442217936768209188
