@@ -218,10 +218,12 @@ def log_to_file(text: str):
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(f"- `{timestamp}` {text}\n")
 
-# --- Komendy slash i buttony ---
+# --- Placeholder dla bot.tree, żeby nie wywalało błędu ---
 @bot.tree.command()
-async def _dummy(): pass  # placeholder, by bot.tree było już zainicjalizowane
+async def _dummy(interaction: discord.Interaction):
+    pass
 
+# --- Slash commandy i komponenty (button/select) ---
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     user = interaction.user
@@ -238,7 +240,7 @@ async def on_message(message):
     log_to_file(f"Wiadomość od {message.author} na {message.channel}: `{message.content}`")
     await bot.process_commands(message)
 
-# --- Kanały głosowe i dynamiczne ---
+# --- Kanały głosowe i zmiany statusu ---
 @bot.event
 async def on_voice_state_update(member, before, after):
     guild = member.guild
@@ -250,7 +252,7 @@ async def on_voice_state_update(member, before, after):
         if before.channel:
             log_to_file(f"{member} opuścił kanał głosowy {before.channel}")
 
-    # Zmiana statusu (aktywny, DND, AFK itp.)
+    # Zmiana statusu (online, dnd, idle itp.)
     if before.self_status != after.self_status:
         log_to_file(f"{member} zmienił status z `{before.self_status}` na `{after.self_status}`")
 
