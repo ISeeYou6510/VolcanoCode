@@ -1,0 +1,85 @@
+=== DODANE GRY TEKSTOWE DO ISTNIEJĄCEGO BOTA ===
+
+Wklej TEN KOD POD INTENTAMI / PRZED bot.run(TOKEN)
+
+==========================
+
+GRY TEKSTOWE – KONFIG
+
+==========================
+
+OSTATNIA_LITERA_ID = 1234567890   # ID #ostatnia-litera OSOBA_PONIZEJ_ID = 1234567890     # ID #osoba-ponizej LICZENIA_ID = 1234567890         # ID #liczenia
+
+last_word = None last_number = 0 last_user_game = { "litera": None, "liczenia": None }
+
+@bot.event async def on_message(message): global last_word, last_number, last_user_game
+
+if message.author.bot:
+    return
+
+# ===== OSTATNIA LITERA =====
+if message.channel.id == OSTATNIA_LITERA_ID:
+    word = message.content.lower().strip()
+
+    if not word.isalpha():
+        await message.delete()
+        return
+
+    if last_word and word[0] != last_word[-1]:
+        await message.delete()
+        return
+
+    if last_user_game["litera"] == message.author.id:
+        await message.delete()
+        return
+
+    last_word = word
+    last_user_game["litera"] = message.author.id
+
+# ===== OSOBA PONIŻEJ =====
+if message.channel.id == OSOBA_PONIZEJ_ID:
+    if not (message.content.lower().startswith("tak") or message.content.lower().startswith("nie")):
+        await message.delete()
+        return
+
+# ===== LICZENIA =====
+if message.channel.id == LICZENIA_ID:
+    try:
+        number = int(message.content)
+    except ValueError:
+        await message.delete()
+        return
+
+    if number != last_number + 1:
+        await message.delete()
+        return
+
+    if last_user_game["liczenia"] == message.author.id:
+        await message.delete()
+        return
+
+    last_number = number
+    last_user_game["liczenia"] = message.author.id
+
+await bot.process_commands(message)
+
+==========================
+
+RESET GIER (ADMIN)
+
+==========================
+
+@bot.command() @commands.has_permissions(administrator=True) async def reset(ctx, gra: str): global last_word, last_number, last_user_game
+
+if gra == "litera":
+    last_word = None
+    last_user_game["litera"] = None
+    await ctx.send("🔁 Zresetowano *ostatnią literę*")
+
+elif gra == "liczenia":
+    last_number = 0
+    last_user_game["liczenia"] = None
+    await ctx.send("🔁 Zresetowano *liczenia*")
+
+else:
+    await ctx.send("❌ Dostępne: litera / liczenia")
