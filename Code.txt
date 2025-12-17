@@ -207,5 +207,53 @@ async def stop(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ Nic nie gra", ephemeral=True)
 
+# ------------------ LOGI ------------------
+
+LOG_PATH = "/home/iseeyou/Pulpit/Logi/logi.md"
+
+def log_to_file(text: str):
+    import datetime, os
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"- `{timestamp}` {text}\n")
+
+# --- Komendy slash i buttony ---
+@bot.tree.command()
+async def _dummy(): pass  # placeholder, by bot.tree było już zainicjalizowane
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    user = interaction.user
+    if interaction.type.name == "application_command":
+        log_to_file(f"Slash command `{interaction.command.name}` użyty przez {user} na kanale {interaction.channel}")
+    elif interaction.type.name == "message_component":
+        log_to_file(f"Interakcja z komponentem `{interaction.data.get('custom_id','brak id')}` przez {user} na kanale {interaction.channel}")
+
+# --- Wiadomości tekstowe ---
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    log_to_file(f"Wiadomość od {message.author} na {message.channel}: `{message.content}`")
+    await bot.process_commands(message)
+
+# --- Kanały głosowe i dynamiczne ---
+@bot.event
+async def on_voice_state_update(member, before, after):
+    guild = member.guild
+
+    # Join/leave kanału
+    if before.channel != after.channel:
+        if after.channel:
+            log_to_file(f"{member} dołączył do kanału głosowego {after.channel}")
+        if before.channel:
+            log_to_file(f"{member} opuścił kanał głosowy {before.channel}")
+
+    # Zmiana statusu (aktywny, DND, AFK itp.)
+    if before.self_status != after.self_status:
+        log_to_file(f"{member} zmienił status z `{before.self_status}` na `{after.self_status}`")
+
+
 def start_bot(token):
     bot.run(token)
