@@ -206,5 +206,3 @@ async def stop(interaction: discord.Interaction):
         await interaction.response.send_message("⏹️ Zatrzymano", ephemeral=True)
     else:
         await interaction.response.send_message("❌ Nic nie gra", ephemeral=True)
-
-bot.run("TOKEN")
