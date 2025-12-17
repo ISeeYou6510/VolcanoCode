@@ -218,15 +218,6 @@ def log_to_file(text: str):
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(f"- `{timestamp}` {text}\n")
 
-# --- Placeholder dla bot.tree, żeby nie wywalało błędu ---
-@bot.tree.command()
-async def setup_dummy_command():
-    @bot.tree.command()
-    async def _dummy(interaction: discord.Interaction):
-        pass
-
-bot.loop.create_task(setup_dummy_command())
-
 # --- Slash commandy i komponenty (button/select) ---
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
