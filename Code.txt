@@ -20,7 +20,7 @@ OSOBA_PONIZEJ_ID = 1234567890
 LICZENIA_ID = 1234567890
 
 # ================== INTENTY ==================
-intents = discord.Intents.all()  # <- wszystkie permisje
+intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ================== LOGI ==================
@@ -35,7 +35,9 @@ last_word = None
 last_number = 0
 last_user_game = {"litera": None, "liczenia": None}
 
-# ================== WERYFIKACJA / MENU / MAX / TICKET ==================
+DYNAMIC_CHANNELS = {}
+
+# ================== VIEWS ==================
 class VerifyView(View):
     @discord.ui.button(label="✅ Zweryfikuj się", style=discord.ButtonStyle.green)
     async def verify(self, interaction: discord.Interaction, button: Button):
@@ -97,8 +99,6 @@ class MenuView(View):
     async def v(self, i: discord.Interaction, b: Button):
         await i.response.send_message("Kliknij panel weryfikacji", ephemeral=True)
 
-DYNAMIC_CHANNELS = {}
-
 # ================== SLASH COMMANDY ==================
 @bot.tree.command(name="ping", description="Sprawdź czy bot żyje", guild=discord.Object(id=GUILD_ID))
 async def ping(interaction: discord.Interaction):
@@ -122,7 +122,142 @@ async def menu(interaction: discord.Interaction):
     await interaction.response.send_message("📌 Menu serwera:", view=MenuView(), ephemeral=True)
     log_to_file(f"Slash /menu użyty przez {interaction.user} na {interaction.channel}")
 
-# ================== VOICE & STATUS LOGI ==================
+@bot.tree.command(name="max2", guild=discord.Object(id=GUILD_ID))
+async def max2(interaction: discord.Interaction, channel: discord.VoiceChannel):
+    DYNAMIC_CHANNELS[channel.id] = 2
+    await interaction.response.send_message("✅ MAX2 ustawione", ephemeral=True)
+    log_to_file(f"{interaction.user} ustawił MAX2 na {channel}")
+
+@bot.tree.command(name="max3", guild=discord.Object(id=GUILD_ID))
+async def max3(interaction: discord.Interaction, channel: discord.VoiceChannel):
+    DYNAMIC_CHANNELS[channel.id] = 3
+    await interaction.response.send_message("✅ MAX3 ustawione", ephemeral=True)
+    log_to_file(f"{interaction.user} ustawił MAX3 na {channel}")
+
+@bot.tree.command(name="max4", guild=discord.Object(id=GUILD_ID))
+async def max4(interaction: discord.Interaction, channel: discord.VoiceChannel):
+    DYNAMIC_CHANNELS[channel.id] = 4
+    await interaction.response.send_message("✅ MAX4 ustawione", ephemeral=True)
+    log_to_file(f"{interaction.user} ustawił MAX4 na {channel}")
+
+@bot.tree.command(name="max5", guild=discord.Object(id=GUILD_ID))
+async def max5(interaction: discord.Interaction, channel: discord.VoiceChannel):
+    DYNAMIC_CHANNELS[channel.id] = 5
+    await interaction.response.send_message("✅ MAX5 ustawione", ephemeral=True)
+    log_to_file(f"{interaction.user} ustawił MAX5 na {channel}")
+
+YTDL_OPTIONS = {
+    "format": "bestaudio/best",
+    "noplaylist": True,
+    "quiet": True,
+    "default_search": "ytsearch",
+    "source_address": "0.0.0.0"
+}
+FFMPEG_OPTIONS = {
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn"
+}
+
+@bot.tree.command(name="play", guild=discord.Object(id=GUILD_ID))
+async def play(interaction: discord.Interaction, query: str):
+    if not interaction.user.voice:
+        await interaction.response.send_message("❌ Wejdź na VC", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        vc = discord.utils.get(bot.voice_clients, guild=interaction.guild)
+        if not vc:
+            vc = await interaction.user.voice.channel.connect()
+        def extract():
+            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+                return ydl.extract_info(query, download=False)
+        info = await asyncio.to_thread(extract)
+        if "entries" in info:
+            info = info["entries"][0]
+        if vc.is_playing():
+            vc.stop()
+        vc.play(discord.FFmpegPCMAudio(info["url"], **FFMPEG_OPTIONS))
+        await interaction.followup.send(f"🎵 **{info['title']}**", ephemeral=True)
+        log_to_file(f"{interaction.user} odtworzył {info['title']} w {interaction.user.voice.channel}")
+    except Exception as e:
+        await interaction.followup.send("❌ Błąd odtwarzania", ephemeral=True)
+        log_to_file(f"Błąd play: {e}")
+
+@bot.tree.command(name="stop", guild=discord.Object(id=GUILD_ID))
+async def stop(interaction: discord.Interaction):
+    vc = discord.utils.get(bot.voice_clients, guild=interaction.guild)
+    if vc and vc.is_playing():
+        vc.stop()
+        await interaction.response.send_message("⏹️ Zatrzymano", ephemeral=True)
+        log_to_file(f"{interaction.user} zatrzymał odtwarzanie w {vc.channel}")
+    else:
+        await interaction.response.send_message("❌ Nic nie gra", ephemeral=True)
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def reset(ctx, gra: str):
+    global last_word, last_number, last_user_game
+    if gra == "litera":
+        last_word = None
+        last_user_game["litera"] = None
+        await ctx.send("🔁 Zresetowano Ostatnia Litera")
+    elif gra == "liczenia":
+        last_number = 0
+        last_user_game["liczenia"] = None
+        await ctx.send("🔁 Zresetowano Liczenia")
+    else:
+        await ctx.send("❌ Dostępne: litera / liczenia")
+
+# ================== EVENTY ==================
+@bot.event
+async def on_message(message):
+    global last_word, last_number, last_user_game
+    if message.author.bot:
+        return
+
+    log_to_file(f"Wiadomość od {message.author} na {message.channel}: `{message.content}`")
+
+    # ===== OSTATNIA LITERA =====
+    if message.channel.id == OSTATNIA_LITERA_ID:
+        word = message.content.lower().strip()
+        if not word.isalpha():
+            await message.delete()
+            return
+        if last_word and word[0] != last_word[-1]:
+            await message.delete()
+            return
+        if last_user_game["litera"] == message.author.id:
+            await message.delete()
+            return
+        last_word = word
+        last_user_game["litera"] = message.author.id
+        return
+
+    # ===== OSOBA PONIŻEJ =====
+    if message.channel.id == OSOBA_PONIZEJ_ID:
+        if not message.content.lower().startswith(("tak", "nie")):
+            await message.delete()
+        return
+
+    # ===== LICZENIA =====
+    if message.channel.id == LICZENIA_ID:
+        try:
+            number = int(message.content)
+        except ValueError:
+            await message.delete()
+            return
+        if number != last_number + 1:
+            await message.delete()
+            return
+        if last_user_game["liczenia"] == message.author.id:
+            await message.delete()
+            return
+        last_number = number
+        last_user_game["liczenia"] = message.author.id
+        return
+
+    await bot.process_commands(message)
+
 @bot.event
 async def on_voice_state_update(member, before, after):
     if before.channel != after.channel:
@@ -145,6 +280,12 @@ async def on_voice_state_update(member, before, after):
 async def on_presence_update(before, after):
     if before.status != after.status:
         log_to_file(f"{after} zmienił status z `{before.status}` na `{after.status}`")
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type.name == "application_command":
+        name = interaction.command.name if interaction.command else "UNKNOWN"
+        log_to_file(f"Slash `{name}` użyty przez {interaction.user} na {interaction.channel}")
 
 # ================== START ==================
 def start_bot(token):
