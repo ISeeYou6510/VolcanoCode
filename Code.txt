@@ -39,17 +39,9 @@ def log_to_file(text: str):
 
 @bot.event
 async def on_ready():
-    guild = discord.Object(id=GUILD_ID)
-
-    # brutalne czyszczenie wszystkiego
-    bot.tree.clear_commands(guild=guild)
-    await bot.tree.sync(guild=guild)
-
-    bot.tree.clear_commands(guild=None)
-    await bot.tree.sync()
-
-    print("✅ Komendy wyczyszczone i zsynchronizowane od zera")
+    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
     print(f"✅ Zalogowano jako {bot.user}")
+    print("✅ Komendy zsynchronizowane")
 
 # ================== SLASH: PING ==================
 
