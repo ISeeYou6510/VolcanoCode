@@ -1,3 +1,12 @@
+# ================== IMPORTY ==================
+import discord
+from discord.ext import commands
+from discord import app_commands
+from discord.ui import View, Button, Select
+import yt_dlp
+import asyncio
+import datetime, os
+
 # ================== KONFIG ==================
 GUILD_ID = 1378797704133742774
 VERIFIED_ROLE_ID = 1437464785334833253
@@ -10,9 +19,17 @@ OSTATNIA_LITERA_ID = 1234567890
 OSOBA_PONIZEJ_ID = 1234567890
 LICZENIA_ID = 1234567890
 
+# ================== INTENTY ==================
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True
+intents.voice_states = True
+intents.presences = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
 # ================== LOGI ==================
 def log_to_file(text: str):
-    import datetime, os
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     with open(LOG_PATH, "a", encoding="utf-8") as f:
@@ -184,7 +201,6 @@ async def stop(interaction: discord.Interaction):
 # ================== VOICE & STATUS LOGI ==================
 @bot.event
 async def on_voice_state_update(member, before, after):
-    # dołączenie / opuszczenie
     if before.channel != after.channel:
         if after.channel:
             log_to_file(f"{member} dołączył do VC {after.channel}")
@@ -210,7 +226,6 @@ async def on_presence_update(before, after):
 @bot.event
 async def on_message(message):
     global last_word, last_number, last_user_game
-
     if message.author.bot:
         return
 
@@ -265,3 +280,21 @@ async def reset(ctx, gra: str):
         await ctx.send("🔁 Zresetowano liczenia")
     else:
         await ctx.send("❌ Dostępne: litera / liczenia")
+
+# ================== ON_INTERACTION LOG ==================
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type.name == "application_command":
+        log_to_file(
+            f"Slash `{interaction.command.name}` użyty przez {interaction.user} "
+            f"na {interaction.channel}"
+        )
+    elif interaction.type.name == "message_component":
+        log_to_file(
+            f"Komponent `{interaction.data.get('custom_id','brak id')}` "
+            f"kliknięty przez {interaction.user}"
+        )
+
+# ================== START ==================
+def start_bot(token):
+    bot.run(token)
