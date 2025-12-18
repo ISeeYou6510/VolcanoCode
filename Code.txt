@@ -294,6 +294,12 @@ async def on_interaction(interaction: discord.Interaction):
             f"Komponent `{interaction.data.get('custom_id','brak id')}` "
             f"kliknięty przez {interaction.user}"
         )
+#=====
+@bot.event
+async def on_ready():
+    await bot.change_presence(activity=discord.Game(name="Bot Online!"))
+    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+    print(f"✅ Zalogowano jako {bot.user}")
 
 # ================== START ==================
 def start_bot(token):
