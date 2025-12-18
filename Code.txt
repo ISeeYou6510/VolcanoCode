@@ -1,21 +1,18 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from discord.ui import View, Button, Select
-import yt_dlp
 import asyncio
+import datetime
+import os
 
 print("Code.txt został załadowany")
 
 # ================== KONFIG ==================
 
 GUILD_ID = 1378797704133742774
-VERIFIED_ROLE_ID = 1437464785334833253
-TICKET_CATEGORY_ID = 1442217936768209188
-STAFF_ROLE_ID = 1379102924617027655
-
 LOG_PATH = "/home/iseeyou/Pulpit/Logi/logi.md"
 
+# kanały gier (UZUPEŁNIJ ID)
 OSTATNIA_LITERA_ID = 1234567890
 OSOBA_PONIZEJ_ID = 1234567890
 LICZENIA_ID = 1234567890
@@ -33,19 +30,32 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ================== LOGI ==================
 
 def log_to_file(text: str):
-    import datetime, os
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(f"- `{ts}` {text}\n")
 
-# ================== READY ==================
+# ================== READY + SYNC (MŁOT) ==================
 
 @bot.event
 async def on_ready():
-    await bot.change_presence(activity=discord.Game(name="Bot Online!"))
-    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+    guild = discord.Object(id=GUILD_ID)
+
+    # brutalne czyszczenie wszystkiego
+    bot.tree.clear_commands(guild=guild)
+    await bot.tree.sync(guild=guild)
+
+    bot.tree.clear_commands(guild=None)
+    await bot.tree.sync()
+
+    print("✅ Komendy wyczyszczone i zsynchronizowane od zera")
     print(f"✅ Zalogowano jako {bot.user}")
+
+# ================== SLASH: PING ==================
+
+@bot.tree.command(name="ping", description="Sprawdź czy bot żyje", guild=discord.Object(id=GUILD_ID))
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("🏓 Pong", ephemeral=True)
 
 # ================== STATUSY ==================
 
@@ -56,19 +66,15 @@ async def on_presence_update(before, after):
             f"{after} zmienił status z `{before.status}` na `{after.status}`"
         )
 
-# ================== SLASH LOGI ==================
+# ================== INTERAKCJE ==================
 
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     if interaction.type.name == "application_command":
+        name = interaction.command.name if interaction.command else "UNKNOWN"
         log_to_file(
-            f"Slash `{interaction.command.name}` użyty przez {interaction.user} "
+            f"Slash `{name}` użyty przez {interaction.user} "
             f"na {interaction.channel}"
-        )
-    elif interaction.type.name == "message_component":
-        log_to_file(
-            f"Komponent `{interaction.data.get('custom_id','brak id')}` "
-            f"kliknięty przez {interaction.user}"
         )
 
 # ================== GRY – STAN ==================
@@ -86,55 +92,47 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # LOG WIADOMOŚCI
     log_to_file(
         f"Wiadomość od {message.author} "
         f"na {message.channel}: `{message.content}`"
     )
 
-    # ===== OSTATNIA LITERA =====
+    # OSTATNIA LITERA
     if message.channel.id == OSTATNIA_LITERA_ID:
         word = message.content.lower().strip()
-
         if not word.isalpha():
             await message.delete()
             return
-
         if last_word and word[0] != last_word[-1]:
             await message.delete()
             return
-
         if last_user_game["litera"] == message.author.id:
             await message.delete()
             return
-
         last_word = word
         last_user_game["litera"] = message.author.id
         return
 
-    # ===== OSOBA PONIŻEJ =====
+    # OSOBA PONIŻEJ
     if message.channel.id == OSOBA_PONIZEJ_ID:
         if not message.content.lower().startswith(("tak", "nie")):
             await message.delete()
             return
         return
 
-    # ===== LICZENIA =====
+    # LICZENIA
     if message.channel.id == LICZENIA_ID:
         try:
             number = int(message.content)
         except ValueError:
             await message.delete()
             return
-
         if number != last_number + 1:
             await message.delete()
             return
-
         if last_user_game["liczenia"] == message.author.id:
             await message.delete()
             return
-
         last_number = number
         last_user_game["liczenia"] = message.author.id
         return
@@ -152,12 +150,10 @@ async def reset(ctx, gra: str):
         last_word = None
         last_user_game["litera"] = None
         await ctx.send("🔁 Zresetowano ostatnią literę")
-
     elif gra == "liczenia":
         last_number = 0
         last_user_game["liczenia"] = None
         await ctx.send("🔁 Zresetowano liczenia")
-
     else:
         await ctx.send("❌ Dostępne: litera / liczenia")
 
