@@ -6,6 +6,9 @@ from discord.ui import View, Button, Select
 import yt_dlp
 import asyncio
 import datetime, os
+import random, string
+
+from captcha.image import ImageCaptcha
 
 # ================== KONFIG ==================
 GUILD_ID = 1378797704133742774
@@ -14,6 +17,7 @@ TICKET_CATEGORY_ID = 1442217936768209188
 STAFF_ROLE_ID = 1379102924617027655
 
 LOG_PATH = "/home/iseeyou/Pulpit/Logi/logi.md"
+CAPTCHA_DIR = "/tmp/captcha"
 
 OSTATNIA_LITERA_ID = 1234567890
 OSOBA_PONIZEJ_ID = 1234567890
@@ -30,16 +34,27 @@ def log_to_file(text: str):
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(f"- `{ts}` {text}\n")
 
+# ================== CAPTCHA ==================
+image = ImageCaptcha(width=280, height=90)
+CAPTCHA = {}  # user_id -> poprawny tekst
+os.makedirs(CAPTCHA_DIR, exist_ok=True)
+
+def generate_captcha():
+    text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+    path = f"{CAPTCHA_DIR}/{text}.png"
+    image.write(text, path)
+    return text, path
+
 # ================== STAN ==================
 last_word = None
 last_number = 0
 last_user_game = {"litera": None, "liczenia": None}
 
 # MAX system
-DYNAMIC_CHANNELS = {}      # max_channel_id -> limit
-TEMP_VC = {}               # temp_vc_id -> max_channel_id
-VC_OWNER = {}              # temp_vc_id -> user_id
-USER_MAX_COUNT = {}        # user_id -> ilość aktywnych VC
+DYNAMIC_CHANNELS = {}
+TEMP_VC = {}
+VC_OWNER = {}
+USER_MAX_COUNT = {}
 MAX_PER_USER = 3
 
 # ================== STATYSTYKI ==================
@@ -56,19 +71,41 @@ async def on_ready():
     VC_OWNER.clear()
     USER_MAX_COUNT.clear()
 
+    bot.add_view(VerifyView())
     await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+
+    log_to_file("Bot uruchomiony")
     print(f"✅ Zalogowano jako {bot.user}")
-    print("🧹 Cleanup wykonany")
-    print("✅ Slash commandy zsynchronizowane")
 
 # ================== VIEWS ==================
 class VerifyView(View):
-    @discord.ui.button(label="✅ Zweryfikuj się", style=discord.ButtonStyle.green)
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="✅ Zweryfikuj się",
+        style=discord.ButtonStyle.green,
+        custom_id="verify_captcha_image"
+    )
     async def verify(self, interaction: discord.Interaction, button: Button):
-        role = interaction.guild.get_role(VERIFIED_ROLE_ID)
-        if role:
-            await interaction.user.add_roles(role)
-            await interaction.response.send_message("✅ Zweryfikowano!", ephemeral=True)
+        if interaction.user.get_role(VERIFIED_ROLE_ID):
+            await interaction.response.send_message(
+                "⚠️ Już jesteś zweryfikowany.",
+                ephemeral=True
+            )
+            return
+
+        text, path = generate_captcha()
+        CAPTCHA[interaction.user.id] = text
+
+        file = discord.File(path, filename="captcha.png")
+        await interaction.response.send_message(
+            "🔐 **Przepisz tekst z obrazka i wyślij go jako wiadomość**",
+            file=file,
+            ephemeral=True
+        )
+
+        log_to_file(f"Wysłano CAPTCHA do {interaction.user} ({text})")
 
 class TicketActionView(View):
     def __init__(self, channel):
@@ -78,6 +115,7 @@ class TicketActionView(View):
     @discord.ui.button(label="🗑️ Zamknij", style=discord.ButtonStyle.red)
     async def close(self, interaction: discord.Interaction, button: Button):
         await self.channel.delete()
+        log_to_file(f"Ticket zamknięty przez {interaction.user}")
 
 class TicketSelect(Select):
     def __init__(self):
@@ -105,6 +143,7 @@ class TicketSelect(Select):
         )
         await ch.send(view=TicketActionView(ch))
         await interaction.response.send_message(f"🎫 Utworzono {ch.mention}", ephemeral=True)
+        log_to_file(f"Ticket utworzony przez {interaction.user}")
 
 class TicketView(View):
     def __init__(self):
@@ -116,196 +155,48 @@ class MenuView(View):
     async def t(self, i, b):
         await i.response.send_message("Użyj /ticket", ephemeral=True)
 
-class MaxOwnerView(View):
-    def __init__(self, vc):
-        super().__init__()
-        self.vc = vc
+# ================== CAPTCHA ODPOWIEDŹ ==================
+@bot.event
+async def on_message(msg: discord.Message):
+    if msg.author.bot or not msg.guild:
+        return
 
-    @discord.ui.button(label="🔇 Wycisz wszystkich", style=discord.ButtonStyle.gray)
-    async def mute_all(self, i, b):
-        for member in self.vc.members:
-            if member != i.user:
-                await member.edit(mute=True)
-        await i.response.send_message("✅ Wyciszono wszystkich", ephemeral=True)
+    if msg.author.id in CAPTCHA:
+        correct = CAPTCHA[msg.author.id]
 
-    @discord.ui.button(label="🔈 Odcisz wszystkich", style=discord.ButtonStyle.green)
-    async def unmute_all(self, i, b):
-        for member in self.vc.members:
-            if member != i.user:
-                await member.edit(mute=False)
-        await i.response.send_message("✅ Odciszono wszystkich", ephemeral=True)
+        if msg.content.strip().upper() == correct:
+            role = msg.guild.get_role(VERIFIED_ROLE_ID)
+            if role:
+                await msg.author.add_roles(role)
 
-    @discord.ui.button(label="❌ Wyrzuć", style=discord.ButtonStyle.red)
-    async def kick(self, i, b):
-        for member in list(self.vc.members):
-            if member != i.user:
-                await member.move_to(None)
-        await i.response.send_message("✅ Wyrzucono wszystkich", ephemeral=True)
+            await msg.reply("✅ Zweryfikowano!", delete_after=5)
+            log_to_file(f"{msg.author} poprawnie przeszedł CAPTCHA")
+        else:
+            await msg.reply("❌ Zła CAPTCHA. Spróbuj ponownie.", delete_after=5)
+            log_to_file(f"{msg.author} podał złą CAPTCHA ({msg.content})")
 
-class MusicControlView(View):
-    @discord.ui.button(label="⏯️ Play/Pause", style=discord.ButtonStyle.blurple)
-    async def toggle(self, i, b):
-        vc = discord.utils.get(bot.voice_clients, guild=i.guild)
-        if vc and vc.is_playing():
-            vc.pause() if not vc.is_paused() else vc.resume()
-            await i.response.send_message("⏯️ Zmieniono stan odtwarzania", ephemeral=True)
+        CAPTCHA.pop(msg.author.id, None)
 
-    @discord.ui.button(label="⏹️ Stop", style=discord.ButtonStyle.red)
-    async def stop_music(self, i, b):
-        vc = discord.utils.get(bot.voice_clients, guild=i.guild)
-        if vc:
-            vc.stop()
-            await i.response.send_message("⏹️ Zatrzymano", ephemeral=True)
+        try:
+            await msg.delete()
+        except:
+            pass
+
+    await bot.process_commands(msg)
 
 # ================== SLASH ==================
-@bot.tree.command(name="ping", description="Sprawdź czy bot żyje", guild=discord.Object(id=GUILD_ID))
-async def ping(i: discord.Interaction):
-    await i.response.send_message(f"🏓 Pong! {round(bot.latency*1000)} ms", ephemeral=True)
-
-@bot.tree.command(name="menu", description="Wyświetla menu serwera", guild=discord.Object(id=GUILD_ID))
-async def menu(i: discord.Interaction):
-    await i.response.send_message("📌 Menu:", view=MenuView(), ephemeral=True)
-
-@bot.tree.command(name="ticket", description="Tworzy ticket", guild=discord.Object(id=GUILD_ID))
-async def ticket(i: discord.Interaction):
-    await i.response.send_message("📂 Wybierz typ ticketu:", view=TicketView(), ephemeral=True)
-
 @bot.tree.command(name="weryfikacja", description="Wyślij panel weryfikacji", guild=discord.Object(id=GUILD_ID))
 async def weryfikacja(i: discord.Interaction):
-    await i.channel.send("🔐 Kliknij aby się zweryfikować:", view=VerifyView())
-    await i.response.send_message("✅ Panel wysłany", ephemeral=True)
-
-# ================== PLAY ==================
-YTDL_OPTIONS = {
-    "format": "bestaudio/best",
-    "noplaylist": True,
-    "quiet": True,
-    "default_search": "ytsearch",
-    "source_address": "0.0.0.0"
-}
-FFMPEG_OPTIONS = {
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn"
-}
-
-@bot.tree.command(name="play", description="Odtwórz muzykę z YouTube", guild=discord.Object(id=GUILD_ID))
-async def play(i: discord.Interaction, youtube_url: str):
-    if not i.user.voice:
-        await i.response.send_message("❌ Wejdź na VC", ephemeral=True)
-        return
-    await i.response.defer(ephemeral=True)
-    try:
-        vc = discord.utils.get(bot.voice_clients, guild=i.guild)
-        if not vc:
-            vc = await i.user.voice.channel.connect()
-
-        def extract():
-            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
-                return ydl.extract_info(youtube_url, download=False)
-
-        info = await asyncio.to_thread(extract)
-        if "entries" in info:
-            info = info["entries"][0]
-        if vc.is_playing():
-            vc.stop()
-        vc.play(discord.FFmpegPCMAudio(info["url"], **FFMPEG_OPTIONS))
-        await i.followup.send(f"🎵 **{info['title']}**", ephemeral=True)
-        await i.channel.send(view=MusicControlView())
-    except Exception as e:
-        await i.followup.send("❌ Błąd odtwarzania", ephemeral=True)
-
-# ================== MAX ==================
-@bot.tree.command(name="max", description="Ustaw MAX na kanale głosowym", guild=discord.Object(id=GUILD_ID))
-async def max_create(i: discord.Interaction, channel: discord.VoiceChannel, limit: int):
-    DYNAMIC_CHANNELS[channel.id] = limit
-    STATS["max_created"] += 1
-    await i.response.send_message("✅ MAX ustawiony", ephemeral=True)
-
-@bot.tree.command(name="maxdel", description="Usuń MAX według numeru", guild=discord.Object(id=GUILD_ID))
-async def maxdel(i: discord.Interaction, numer: int):
-    if numer < 1 or numer > len(DYNAMIC_CHANNELS):
-        await i.response.send_message("❌ Zły numer", ephemeral=True)
-        return
-
-    max_id = list(DYNAMIC_CHANNELS.keys())[numer - 1]
-    DYNAMIC_CHANNELS.pop(max_id)
-
-    to_delete = [vc for vc, parent in TEMP_VC.items() if parent == max_id]
-    for vc_id in to_delete:
-        ch = i.guild.get_channel(vc_id)
-        if ch:
-            await ch.delete()
-        TEMP_VC.pop(vc_id, None)
-        VC_OWNER.pop(vc_id, None)
-
-    await i.response.send_message(f"🗑️ Usunięto MAX #{numer}", ephemeral=True)
-
-@bot.tree.command(name="stats", description="Wyświetla statystyki bota", guild=discord.Object(id=GUILD_ID))
-async def stats(i: discord.Interaction):
-    msg = (
-        f"📊 **Statystyki**\n"
-        f"MAX utworzone: {STATS['max_created']}\n"
-        f"VC stworzone: {STATS['vc_created']}\n"
-        f"VC usunięte: {STATS['vc_deleted']}"
+    await i.channel.send(
+        "🔐 **Weryfikacja serwera**\nKliknij przycisk i przepisz CAPTCHA:",
+        view=VerifyView()
     )
-    await i.response.send_message(msg, ephemeral=True)
+    await i.response.send_message("✅ Panel wysłany", ephemeral=True)
+    log_to_file(f"Panel weryfikacji wysłany przez {i.user}")
 
-# ================== VOICE ==================
-@bot.event
-async def on_voice_state_update(member, before, after):
-    # WEJŚCIE NA MAX
-    if after.channel and after.channel.id in DYNAMIC_CHANNELS:
-        uid = member.id
-        USER_MAX_COUNT.setdefault(uid, 0)
-
-        if USER_MAX_COUNT[uid] >= MAX_PER_USER:
-            await member.move_to(None)
-            return
-
-        limit = DYNAMIC_CHANNELS[after.channel.id]
-        parent = after.channel.category
-
-        vc = await member.guild.create_voice_channel(
-            f"{member.display_name} | {after.channel.name}",
-            category=parent,
-            user_limit=limit
-        )
-
-        TEMP_VC[vc.id] = after.channel.id
-        VC_OWNER[vc.id] = uid
-        USER_MAX_COUNT[uid] += 1
-        STATS["vc_created"] += 1
-
-        await member.move_to(vc)
-        # Panel właściciela MAX na czacie kanału
-        try:
-            await vc.send(f"🔧 Panel właściciela {member.display_name}:", view=MaxOwnerView(vc))
-        except:
-            # fallback do kanału systemowego jeśli VC nie ma text_channel
-            if member.guild.system_channel:
-                await member.guild.system_channel.send(f"🔧 Panel właściciela {member.display_name}:", view=MaxOwnerView(vc))
-
-    # USUWANIE TEMP
-    if before.channel and before.channel.id in TEMP_VC:
-        if len(before.channel.members) == 0:
-            owner = VC_OWNER.get(before.channel.id)
-            if owner:
-                USER_MAX_COUNT[owner] -= 1
-            await before.channel.delete()
-            TEMP_VC.pop(before.channel.id)
-            VC_OWNER.pop(before.channel.id)
-            STATS["vc_deleted"] += 1
-
-    # BOT WYCHODZI JAK SAM
-    for vc in bot.voice_clients:
-        if vc.channel and len(vc.channel.members) == 1:
-            await vc.disconnect()
-
-# ================== STATUS (WYŁĄCZONE) ==================
-# @bot.event
-# async def on_presence_update(before, after):
-#     if before.status != after.status:
-#         log_to_file(f"{after} zmienił status")
+@bot.tree.command(name="ping", description="Ping", guild=discord.Object(id=GUILD_ID))
+async def ping(i: discord.Interaction):
+    await i.response.send_message(f"🏓 Pong! {round(bot.latency*1000)} ms", ephemeral=True)
 
 # ================== START ==================
 def start_bot(token):
