@@ -27,13 +27,13 @@ zarządzanym centralnie i odpornym na restart oraz zmiany konfiguracji.
 
 ## Struktura projektu
 
-project/
-├── bot/ # Bot Discord (thin client)
-├── controller_app/ # Aplikacja sterująca (PyQt6)
-├── shared/ # Wspólna konfiguracja i schematy
-├── data/ # Dane lokalne bota (DB, backupy)
-├── docs/ # Dokumentacja techniczna
-└── README.md
+project/ <br>
+├── bot/ # Bot Discord (thin client) <br>
+├── controller_app/ # Aplikacja sterująca (PyQt6) <br>
+├── shared/ # Wspólna konfiguracja i schematy <br>
+├── data/ # Dane lokalne bota (DB, backupy) <br>
+├── docs/ # Dokumentacja techniczna <br>
+└── README.md <br>
 
 
 ### bot/
